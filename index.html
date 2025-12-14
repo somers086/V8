@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>倉儲系統 V8 (完整版)</title>
+    <title>倉儲系統 V10 (雙向批量)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -15,34 +15,34 @@
         input { -webkit-user-select: text; user-select: text; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         [v-cloak] { display: none; }
-        
-        /* Modal 動畫 */
-        .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
-        .modal-enter-from, .modal-leave-to { opacity: 0; }
-        .slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s ease; }
-        .slide-down-enter-from, .slide-down-leave-to { opacity: 0; transform: translateY(-10px); }
+        .list-enter-active, .list-leave-active { transition: all 0.3s ease; }
+        .list-enter-from, .list-leave-to { opacity: 0; transform: translateX(-20px); }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 h-screen w-screen overflow-hidden flex flex-col">
 
 <div id="app" v-cloak class="h-full flex flex-col w-full bg-white">
     
-    <!-- 頂部導航 -->
-    <header class="bg-slate-900 text-white p-2 shrink-0 z-20 shadow-md flex gap-2">
-        <button @click="switchMode('search')" :class="mode === 'search' ? 'bg-yellow-500 text-slate-900' : 'bg-slate-700 text-gray-400'" class="flex-1 py-3 rounded font-bold text-lg flex justify-center items-center gap-2">
-            <i class="fa-solid fa-magnifying-glass"></i> 查/改
+    <!-- 頂部導航 (三顆按鈕) -->
+    <header class="bg-slate-900 text-white p-2 shrink-0 z-20 shadow-md flex gap-2 text-sm">
+        <button @click="switchMode('search')" :class="mode === 'search' ? 'bg-yellow-500 text-slate-900' : 'bg-slate-700 text-gray-400'" class="flex-1 py-3 rounded font-bold flex justify-center items-center gap-1">
+            <i class="fa-solid fa-search"></i> 查
         </button>
-        <button @click="switchMode('add')" :class="mode === 'add' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-400'" class="flex-1 py-3 rounded font-bold text-lg flex justify-center items-center gap-2">
-            <i class="fa-solid fa-dolly"></i> 入庫
+        <button @click="switchMode('add')" :class="mode === 'add' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-gray-400'" class="flex-1 py-3 rounded font-bold flex justify-center items-center gap-1">
+            <i class="fa-solid fa-arrow-down"></i> 入庫
+        </button>
+        <!-- 新增出庫按鈕 -->
+        <button @click="switchMode('remove')" :class="mode === 'remove' ? 'bg-red-600 text-white' : 'bg-slate-700 text-gray-400'" class="flex-1 py-3 rounded font-bold flex justify-center items-center gap-1">
+            <i class="fa-solid fa-arrow-up"></i> 出庫
         </button>
     </header>
 
     <main class="flex-1 overflow-y-auto no-scrollbar relative bg-gray-50">
         
-        <!-- ================= 1. 搜尋/管理模式 ================= -->
+        <!-- ================= 1. 搜尋模式 (不變) ================= -->
         <div v-if="mode === 'search'" class="p-4">
             <div class="sticky top-0 bg-gray-50 pb-2 z-10">
-                <input ref="searchInput" v-model="searchKeyword" type="text" placeholder="搜尋以修改或刪除..." class="w-full p-4 text-xl border-2 border-yellow-500 rounded-lg focus:outline-none shadow-sm">
+                <input ref="searchInput" v-model="searchKeyword" type="text" placeholder="搜尋庫存..." class="w-full p-4 text-xl border-2 border-yellow-500 rounded-lg focus:outline-none shadow-sm">
             </div>
             <div class="mt-2 space-y-3">
                 <div v-if="filteredInventory.length === 0" class="text-center py-10 opacity-50"><p>無資料</p></div>
@@ -53,133 +53,126 @@
             </div>
         </div>
 
-        <!-- ================= 2. 入庫模式 (V8 介面優化) ================= -->
-        <div v-else class="h-full flex flex-col">
-            
-            <!-- A. 鎖定前 -->
+        <!-- ================= 2. 批量入庫 (藍色系) ================= -->
+        <div v-else-if="mode === 'add'" class="h-full flex flex-col">
             <div v-if="!currentPallet" class="flex-1 flex flex-col justify-center p-6 bg-blue-50">
                 <div class="text-center mb-6">
-                    <i class="fa-solid fa-layer-group text-6xl text-blue-300 mb-4"></i>
-                    <h2 class="text-2xl font-bold text-blue-900">掃描棧板號</h2>
+                    <i class="fa-solid fa-cube text-6xl text-blue-300 mb-4"></i>
+                    <h2 class="text-2xl font-bold text-blue-900">入庫：掃描棧板</h2>
                 </div>
                 <input ref="palletInput" v-model="tempPalletInput" @keyup.enter="lockPallet" type="text" class="w-full p-4 text-center text-2xl font-black border-4 border-blue-400 rounded-xl uppercase" placeholder="P-01">
             </div>
 
-            <!-- B. 鎖定後 (作業區) -->
-            <div v-else class="flex flex-col h-full bg-white">
-                <!-- 棧板資訊列 -->
+            <div v-else class="flex flex-col h-full bg-white relative">
                 <div class="bg-blue-600 text-white p-3 flex justify-between items-center shadow-md shrink-0">
-                    <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-cube text-xl"></i>
-                        <span class="text-2xl font-black tracking-wider">{{ currentPallet }}</span>
-                    </div>
-                    <button @click="unlockPallet" class="bg-blue-800 text-xs px-3 py-2 rounded border border-blue-400">更換棧板</button>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-cube"></i><span class="text-2xl font-black">{{ currentPallet }}</span></div>
+                    <div class="text-right"><div class="text-xs opacity-70">待存</div><div class="font-bold text-xl leading-none">{{ batchQueue.length }}</div></div>
                 </div>
-
-                <div class="p-4 flex-1 overflow-y-auto">
-                    <!-- 物料輸入 -->
-                    <div class="mb-3">
-                        <label class="text-xs font-bold text-gray-500 uppercase">物料條碼</label>
-                        <input ref="matInput" v-model="newItem.materialName" @keyup.enter="handleMaterialScan" type="text" class="w-full p-3 text-xl border-2 border-gray-300 rounded focus:border-blue-600" placeholder="掃描...">
-                    </div>
-
-                    <!-- 數量與按鈕區 (V8 重點修改) -->
-                    <div class="flex gap-2 items-stretch h-[60px]">
-                        <!-- 1. 數量欄位 -->
-                        <div class="w-1/4">
-                            <input ref="qtyInput" v-model="newItem.quantity" @keyup.enter="addItem" type="number" class="w-full h-full text-xl border-2 border-gray-300 rounded text-center font-bold focus:border-blue-600" placeholder="1">
+                <div class="p-3 bg-gray-100 border-b shrink-0 z-10">
+                    <input ref="matInput" v-model="inputMaterial" @keyup.enter="scanToAddQueue" type="text" class="w-full p-3 text-xl border-2 border-blue-500 rounded focus:outline-none shadow-sm" placeholder="入庫掃描...">
+                </div>
+                <div class="flex-1 overflow-y-auto p-3 pb-24 space-y-2">
+                    <div v-for="(item, index) in batchQueue.slice().reverse()" :key="item.tempId" class="bg-white p-3 rounded border-l-4 border-blue-500 shadow-sm flex justify-between items-center">
+                        <span class="font-bold text-lg">{{ item.materialName }}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-blue-600">x {{ item.quantity }}</span>
+                            <button @click="removeFromQueue(batchQueue.length - 1 - index, 'add')" class="text-red-300 ml-2"><i class="fa-solid fa-times-circle"></i></button>
                         </div>
-                        
-                        <!-- 2. 入庫按鈕 (佔大部份) -->
-                        <button @click="addItem" class="flex-1 bg-green-600 text-white rounded font-bold text-xl shadow active:scale-95 flex flex-col justify-center items-center leading-none">
-                            <span>確認入庫</span>
-                            <span class="text-xs font-normal opacity-80">Enter</span>
-                        </button>
-
-                        <!-- 3. 清單按鈕 (直接在入庫旁邊) -->
-                        <button @click="showDetails = !showDetails" :class="showDetails ? 'bg-slate-300 text-slate-700' : 'bg-slate-200 text-slate-500'" class="w-[60px] rounded font-bold text-xl flex justify-center items-center relative transition-colors">
-                            <i class="fa-solid fa-list-ul"></i>
-                            <span v-if="itemsInCurrentPallet.length > 0" class="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-6 h-6 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
-                                {{ itemsInCurrentPallet.length }}
-                            </span>
-                        </button>
                     </div>
-
-                    <!-- 成功提示 -->
-                    <div v-if="lastAdded" class="mt-3 p-2 bg-green-50 border border-green-200 rounded flex items-center gap-2 text-green-800 animate-pulse text-sm">
-                        <i class="fa-solid fa-check"></i> <span class="font-bold">{{ lastAdded.materialName }}</span> (x{{ lastAdded.quantity }})
-                    </div>
-
-                    <!-- 清單展開區 -->
-                    <transition name="slide-down">
-                        <div v-if="showDetails" class="mt-4 border-t-2 border-slate-100 pt-2">
-                            <h4 class="text-xs font-bold text-gray-400 mb-2">本棧板明細 (點擊修改)</h4>
-                            <div v-if="itemsInCurrentPallet.length === 0" class="text-center text-gray-300 py-2">尚無資料</div>
-                            <div class="space-y-2">
-                                <div v-for="item in itemsInCurrentPallet.slice().reverse()" :key="item.id" @click="openEditModal(item)" class="bg-slate-50 p-3 rounded border border-slate-200 flex justify-between items-center active:bg-blue-50">
-                                    <span class="font-bold text-slate-700">{{ item.materialName }}</span>
-                                    <span class="bg-white px-2 py-1 rounded border text-sm font-bold">x {{ item.quantity }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </transition>
+                </div>
+                <div class="absolute bottom-0 left-0 w-full bg-white border-t p-3 flex gap-2 shadow-lg">
+                    <button @click="unlockPallet" class="bg-gray-200 text-gray-700 px-4 rounded font-bold">取消</button>
+                    <button @click="executeBatchAdd" :class="batchQueue.length > 0 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-400'" class="flex-1 py-4 rounded font-bold text-xl shadow">確認入庫</button>
                 </div>
             </div>
         </div>
+
+        <!-- ================= 3. 批量出庫 (紅色系) ================= -->
+        <div v-else-if="mode === 'remove'" class="h-full flex flex-col bg-red-50">
+            <!-- 出庫不需要先鎖定棧板，因為可能來自不同板 -->
+            <div class="flex flex-col h-full relative">
+                <div class="bg-red-600 text-white p-3 flex justify-between items-center shadow-md shrink-0">
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-dolly-flatbed"></i><span class="text-xl font-bold">批量出庫</span></div>
+                    <div class="text-right"><div class="text-xs opacity-70">待刪</div><div class="font-bold text-xl leading-none">{{ removeQueue.length }}</div></div>
+                </div>
+                
+                <div class="p-3 bg-red-100 border-b border-red-200 shrink-0 z-10">
+                    <input ref="removeInput" v-model="inputMaterial" @keyup.enter="scanToRemoveQueue" type="text" class="w-full p-3 text-xl border-2 border-red-500 rounded focus:outline-none shadow-sm placeholder-red-300" placeholder="出庫掃描...">
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-3 pb-24 space-y-2">
+                    <div v-if="removeQueue.length === 0" class="text-center text-gray-400 mt-10">
+                        <i class="fa-solid fa-trash-can text-4xl mb-2 text-red-200"></i>
+                        <p class="text-red-300">掃描物料以加入刪除清單</p>
+                    </div>
+                    <div v-for="(item, index) in removeQueue.slice().reverse()" :key="item.tempId" class="bg-white p-3 rounded border-l-4 border-red-500 shadow-sm flex justify-between items-center">
+                        <div>
+                            <span class="font-bold text-lg block">{{ item.materialName }}</span>
+                            <span class="text-xs text-gray-500 bg-gray-100 px-1 rounded">來自: {{ item.locationId }}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-red-600 text-xl">-{{ item.quantity }}</span>
+                            <button @click="removeFromQueue(removeQueue.length - 1 - index, 'remove')" class="text-gray-300 ml-2"><i class="fa-solid fa-times-circle"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="absolute bottom-0 left-0 w-full bg-white border-t p-3 flex gap-2 shadow-lg">
+                    <button @click="clearRemoveQueue" class="bg-gray-200 text-gray-700 px-4 rounded font-bold">清空</button>
+                    <button @click="executeBatchRemove" :class="removeQueue.length > 0 ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-400'" class="flex-1 py-4 rounded font-bold text-xl shadow">確認扣帳</button>
+                </div>
+            </div>
+        </div>
+
     </main>
 
-    <!-- 編輯/刪除視窗 (Modal) -->
-    <transition name="modal">
-        <div v-if="editingItem" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div class="bg-white w-full max-w-sm rounded-xl shadow-2xl modal-container p-5">
-                <h3 class="text-xl font-bold mb-4 border-b pb-2">管理庫存</h3>
-                
-                <div class="mb-3">
-                    <label class="text-xs text-gray-500">物料名稱</label>
-                    <div class="font-bold text-lg text-gray-800">{{ editingItem.materialName }}</div>
-                </div>
+    <!-- 選擇來源棧板 Modal (當出庫物料有多個來源時) -->
+    <div v-if="palletChoiceList.length > 0" class="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-xl p-5 shadow-2xl">
+            <h3 class="text-lg font-bold mb-2">請選擇來源棧板</h3>
+            <p class="text-gray-500 text-sm mb-4">物料 <b>{{ inputMaterial }}</b> 存在於多個位置，請選擇從哪裡扣除：</p>
+            <div class="space-y-2 max-h-60 overflow-y-auto">
+                <button v-for="loc in palletChoiceList" :key="loc.id" @click="selectPalletForRemove(loc)" class="w-full p-3 border-2 border-gray-200 rounded hover:border-red-500 hover:bg-red-50 flex justify-between items-center">
+                    <span class="font-bold text-xl">{{ loc.locationId }}</span>
+                    <span class="text-sm bg-gray-100 px-2 py-1 rounded">庫存: {{ loc.quantity }}</span>
+                </button>
+            </div>
+            <button @click="palletChoiceList = []; inputMaterial = ''; $refs.removeInput.focus()" class="w-full mt-4 py-3 text-gray-500">取消</button>
+        </div>
+    </div>
 
-                <div class="grid grid-cols-2 gap-3 mb-4">
-                    <div>
-                        <label class="text-xs text-gray-500">棧板位置</label>
-                        <input v-model="editingItem.locationId" class="w-full border p-2 rounded font-bold uppercase bg-gray-50">
-                    </div>
-                    <div>
-                        <label class="text-xs text-gray-500">數量</label>
-                        <input v-model="editingItem.quantity" type="number" class="w-full border p-2 rounded font-bold text-center">
-                    </div>
-                </div>
+    <!-- 編輯/刪除 Modal -->
+    <div v-if="editingItem" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-xl shadow-2xl p-5">
+            <h3 class="text-xl font-bold mb-4 border-b pb-2">管理庫存</h3>
+            <div class="mb-3"><label class="text-xs text-gray-500">物料</label><div class="font-bold text-lg">{{ editingItem.materialName }}</div></div>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div><label class="text-xs text-gray-500">位置</label><input v-model="editingItem.locationId" class="w-full border p-2 rounded font-bold uppercase"></div>
+                <div><label class="text-xs text-gray-500">數量</label><input v-model="editingItem.quantity" type="number" class="w-full border p-2 rounded font-bold text-center"></div>
+            </div>
+            <div class="flex gap-2">
+                <button @click="deleteEditingItem" class="flex-1 bg-red-100 text-red-600 py-3 rounded font-bold">刪除</button>
+                <button @click="saveEdit" class="flex-1 bg-blue-600 text-white py-3 rounded font-bold">儲存</button>
+            </div>
+            <button @click="editingItem = null" class="w-full mt-2 text-gray-400 text-sm">取消</button>
+        </div>
+    </div>
 
-                <div class="flex gap-2">
-                    <button @click="deleteEditingItem" class="flex-1 bg-red-100 text-red-600 py-3 rounded font-bold hover:bg-red-200">刪除</button>
-                    <button @click="saveEdit" class="flex-1 bg-blue-600 text-white py-3 rounded font-bold hover:bg-blue-700">儲存</button>
-                </div>
-                <button @click="editingItem = null" class="w-full mt-2 py-2 text-gray-400 text-sm">取消</button>
+    <!-- 衝突警示 Modal -->
+    <div v-if="conflictInfo" class="fixed inset-0 bg-red-900 bg-opacity-80 z-50 flex justify-center items-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-xl p-6 text-center shadow-2xl">
+            <i class="fa-solid fa-circle-exclamation text-5xl text-red-500 mb-3"></i>
+            <h3 class="text-2xl font-bold text-red-600 mb-1">禁止入庫</h3>
+            <p class="text-gray-600 mb-4 bg-gray-50 p-3 rounded text-sm text-left">
+                物料 <b>{{ conflictInfo.material }}</b> 已在：<br>
+                <span class="text-red-600 font-black text-lg block mt-1">{{ conflictInfo.existingLoc }}</span>
+            </p>
+            <div class="space-y-2">
+                <button @click="moveStockHere" class="w-full bg-blue-600 text-white py-3 rounded font-bold">移過來合併</button>
+                <button @click="conflictInfo = null" class="w-full bg-gray-200 text-gray-700 py-3 rounded font-bold">取消</button>
             </div>
         </div>
-    </transition>
-
-    <!-- 重複警示視窗 -->
-    <transition name="modal">
-        <div v-if="conflictInfo" class="fixed inset-0 bg-red-900 bg-opacity-80 z-50 flex justify-center items-center p-4">
-            <div class="bg-white w-full max-w-sm rounded-xl p-6 text-center shadow-2xl modal-container">
-                <i class="fa-solid fa-circle-exclamation text-5xl text-red-500 mb-3"></i>
-                <h3 class="text-2xl font-bold text-red-600 mb-1">禁止入庫</h3>
-                <p class="text-gray-600 mb-4 text-left bg-gray-50 p-3 rounded text-sm">
-                    物料 <b>{{ conflictInfo.material }}</b> 已經存在於其他棧板：<br>
-                    <span class="text-red-600 font-black text-lg block mt-1">{{ conflictInfo.existingLoc }}</span>
-                </p>
-                <div class="space-y-2">
-                    <button @click="moveStockHere" class="w-full bg-blue-600 text-white py-3 rounded font-bold">
-                        移過來合併 (換板)
-                    </button>
-                    <button @click="cancelAdd" class="w-full bg-gray-200 text-gray-700 py-3 rounded font-bold">
-                        取消本次入庫
-                    </button>
-                </div>
-            </div>
-        </div>
-    </transition>
+    </div>
 
 </div>
 
@@ -193,16 +186,18 @@
                 searchKeyword: '',
                 inventory: [],
                 
-                // 作業狀態
+                // 入庫變數
                 currentPallet: '',
                 tempPalletInput: '',
-                newItem: { materialName: '', quantity: '' },
-                lastAdded: null,
-                showDetails: false, 
+                inputMaterial: '',
+                batchQueue: [], 
 
-                // 彈窗與邏輯控制
-                editingItem: null, 
-                conflictInfo: null, 
+                // 出庫變數 (V10)
+                removeQueue: [],
+                palletChoiceList: [], // 當出庫遇到重複物料時的選項清單
+
+                editingItem: null,
+                conflictInfo: null
             }
         },
         computed: {
@@ -210,21 +205,21 @@
                 if (!this.searchKeyword) return this.inventory;
                 const k = this.searchKeyword.toLowerCase().trim();
                 return this.inventory.filter(i => i.materialName.toLowerCase().includes(k) || i.locationId.toLowerCase().includes(k));
-            },
-            itemsInCurrentPallet() {
-                if (!this.currentPallet) return [];
-                return this.inventory.filter(i => i.locationId === this.currentPallet);
             }
         },
         methods: {
             switchMode(m) { 
                 this.mode = m;
+                this.inputMaterial = '';
                 this.$nextTick(() => {
                     if(m === 'search') this.$refs.searchInput.focus();
-                    else if(!this.currentPallet) this.$refs.palletInput.focus();
-                    else this.$refs.matInput.focus();
+                    else if(m === 'add' && !this.currentPallet) this.$refs.palletInput.focus();
+                    else if(m === 'add') this.$refs.matInput.focus();
+                    else if(m === 'remove') this.$refs.removeInput.focus();
                 });
             },
+            
+            // ===== 1. 入庫邏輯 =====
             lockPallet() {
                 if(!this.tempPalletInput.trim()) return;
                 this.currentPallet = this.tempPalletInput.toUpperCase().trim();
@@ -232,109 +227,137 @@
                 this.$nextTick(() => this.$refs.matInput.focus());
             },
             unlockPallet() {
+                if(this.batchQueue.length > 0 && !confirm('清單未存，確定離開？')) return;
                 this.currentPallet = '';
-                this.newItem = { materialName: '', quantity: '' };
-                this.showDetails = false;
+                this.batchQueue = [];
                 this.$nextTick(() => this.$refs.palletInput.focus());
             },
-            
-            // 處理物料掃描 (重複檢查)
-            handleMaterialScan() {
-                if(!this.newItem.materialName) return;
-                const matName = this.newItem.materialName.trim();
-                
-                const existing = this.inventory.find(i => 
+            scanToAddQueue() {
+                if(!this.inputMaterial) return;
+                const matName = this.inputMaterial.trim();
+
+                // 檢查是否在別板 (嚴格控管)
+                const existingGlobal = this.inventory.find(i => 
                     i.materialName.toLowerCase() === matName.toLowerCase() && 
                     i.locationId !== this.currentPallet
                 );
-
-                if (existing) {
+                if(existingGlobal) {
                     this.vibrate(500);
-                    this.conflictInfo = {
-                        material: existing.materialName,
-                        existingLoc: existing.locationId,
-                        recordId: existing.id
-                    };
-                } else {
-                    this.$refs.qtyInput.focus();
-                    this.$refs.qtyInput.select();
+                    this.conflictInfo = { material: existingGlobal.materialName, existingLoc: existingGlobal.locationId, recordId: existingGlobal.id };
+                    this.inputMaterial = '';
+                    return;
                 }
+
+                const inQueue = this.batchQueue.find(i => i.materialName.toLowerCase() === matName.toLowerCase());
+                if(inQueue) inQueue.quantity++;
+                else this.batchQueue.push({ tempId: Date.now(), materialName: matName, quantity: 1 });
+                
+                this.inputMaterial = '';
+                this.$nextTick(() => this.$refs.matInput.focus());
+            },
+            executeBatchAdd() {
+                if(this.batchQueue.length === 0) return;
+                this.batchQueue.forEach(q => {
+                    const same = this.inventory.find(i => i.materialName === q.materialName && i.locationId === this.currentPallet);
+                    if(same) same.quantity = parseInt(same.quantity) + parseInt(q.quantity);
+                    else this.inventory.push({ id: Date.now() + Math.random(), locationId: this.currentPallet, materialName: q.materialName, quantity: q.quantity });
+                });
+                this.saveData();
+                this.batchQueue = [];
+                alert('入庫完成');
+                this.$nextTick(() => this.$refs.matInput.focus());
+            },
+            moveStockHere() {
+                const target = this.inventory.find(i => i.id === this.conflictInfo.recordId);
+                if (target) { target.locationId = this.currentPallet; this.saveData(); alert('已轉移'); }
+                this.conflictInfo = null; this.$nextTick(() => this.$refs.matInput.focus());
             },
 
-            addItem() {
-                if(!this.newItem.materialName) { alert('請掃描物料'); return; }
+            // ===== 2. 出庫邏輯 (V10 新增) =====
+            scanToRemoveQueue() {
+                if(!this.inputMaterial) return;
+                const matName = this.inputMaterial.trim();
                 
-                const record = {
-                    id: Date.now(),
-                    locationId: this.currentPallet,
-                    materialName: this.newItem.materialName,
-                    quantity: this.newItem.quantity || 1
-                };
-
-                const sameInPallet = this.inventory.find(i => 
-                    i.materialName === record.materialName && 
-                    i.locationId === this.currentPallet
-                );
-
-                if (sameInPallet) {
-                    sameInPallet.quantity = parseInt(sameInPallet.quantity) + parseInt(record.quantity);
-                } else {
-                    this.inventory.push(record);
+                // 搜尋全倉庫哪裡有這個物料
+                const targets = this.inventory.filter(i => i.materialName.toLowerCase() === matName.toLowerCase());
+                
+                if (targets.length === 0) {
+                    alert('查無此物料庫存！');
+                    this.inputMaterial = '';
+                    return;
                 }
+
+                // 判斷來源
+                if (targets.length === 1) {
+                    // 只有一個來源，直接加入
+                    this.addToRemoveQueue(targets[0].materialName, targets[0].locationId);
+                } else {
+                    // 有多個來源，跳出選擇視窗
+                    this.palletChoiceList = targets;
+                    // inputMaterial 先保留供顯示用
+                }
+            },
+            selectPalletForRemove(loc) {
+                this.addToRemoveQueue(loc.materialName, loc.locationId);
+                this.palletChoiceList = []; // 關閉視窗
+            },
+            addToRemoveQueue(name, locId) {
+                // 檢查是否已在刪除清單中
+                const inQueue = this.removeQueue.find(i => i.materialName === name && i.locationId === locId);
+                if(inQueue) inQueue.quantity++;
+                else this.removeQueue.push({ tempId: Date.now(), materialName: name, locationId: locId, quantity: 1 });
+                
+                this.inputMaterial = '';
+                this.$nextTick(() => this.$refs.removeInput.focus());
+            },
+            clearRemoveQueue() {
+                this.removeQueue = [];
+                this.$nextTick(() => this.$refs.removeInput.focus());
+            },
+            executeBatchRemove() {
+                if(this.removeQueue.length === 0) return;
+                
+                // 開始扣帳
+                let errorMsg = '';
+                this.removeQueue.forEach(q => {
+                    const target = this.inventory.find(i => i.materialName === q.materialName && i.locationId === q.locationId);
+                    if(target) {
+                        if(target.quantity < q.quantity) {
+                            errorMsg += `${q.materialName} (在 ${q.locationId}) 庫存不足！\n`;
+                        } else {
+                            target.quantity -= q.quantity;
+                            // 如果數量歸零，是否要刪除該筆資料？通常是刪除
+                            if(target.quantity <= 0) {
+                                this.inventory = this.inventory.filter(i => i.id !== target.id);
+                            }
+                        }
+                    } else {
+                         errorMsg += `${q.materialName} 找不到庫存資料\n`;
+                    }
+                });
 
                 this.saveData();
-                this.lastAdded = record;
+                this.removeQueue = [];
+                if(errorMsg) alert('部分扣帳有誤：\n' + errorMsg);
+                else alert('出庫扣帳完成！');
                 
-                this.newItem.materialName = '';
-                this.newItem.quantity = '';
-                this.$nextTick(() => this.$refs.matInput.focus());
+                this.$nextTick(() => this.$refs.removeInput.focus());
+            },
+            removeFromQueue(index, type) {
+                if(type === 'add') this.batchQueue.splice(index, 1);
+                else this.removeQueue.splice(index, 1);
             },
 
-            // ===== 衝突處理邏輯 (之前切斷處) =====
-            moveStockHere() {
-                // 1. 找出原本那筆資料
-                const target = this.inventory.find(i => i.id === this.conflictInfo.recordId);
-                if (target) {
-                    // 2. 修改它的位置到目前棧板
-                    target.locationId = this.currentPallet;
-                    this.saveData();
-                    this.lastAdded = target; // 顯示提示
-                }
-                // 3. 關閉視窗並重置輸入
-                this.conflictInfo = null;
-                this.newItem.materialName = '';
-                this.newItem.quantity = '';
-                this.$nextTick(() => this.$refs.matInput.focus());
-            },
-            cancelAdd() {
-                this.conflictInfo = null;
-                this.newItem.materialName = '';
-                this.newItem.quantity = '';
-                this.$nextTick(() => this.$refs.matInput.focus());
-            },
-
-            // ===== 編輯/刪除邏輯 =====
-            openEditModal(item) {
-                // 複製物件避免直接修改
-                this.editingItem = { ...item };
-            },
+            // ===== 通用 =====
+            openEditModal(item) { this.editingItem = { ...item }; },
             saveEdit() {
-                const index = this.inventory.findIndex(i => i.id === this.editingItem.id);
-                if (index !== -1) {
-                    this.inventory[index] = { ...this.editingItem };
-                    this.saveData();
-                }
+                const idx = this.inventory.findIndex(i => i.id === this.editingItem.id);
+                if (idx !== -1) { this.inventory[idx] = { ...this.editingItem }; this.saveData(); }
                 this.editingItem = null;
             },
             deleteEditingItem() {
-                if(confirm('確定刪除此筆庫存？')) {
-                    this.inventory = this.inventory.filter(i => i.id !== this.editingItem.id);
-                    this.saveData();
-                    this.editingItem = null;
-                }
+                if(confirm('刪除？')) { this.inventory = this.inventory.filter(i => i.id !== this.editingItem.id); this.saveData(); this.editingItem = null; }
             },
-
-            // ===== 系統功能 =====
             vibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); },
             saveData() { localStorage.setItem('warehouse_inventory_v3', JSON.stringify(this.inventory)); },
             loadData() { const d = localStorage.getItem('warehouse_inventory_v3'); if(d) this.inventory = JSON.parse(d); }
